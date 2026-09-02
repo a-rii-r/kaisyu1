@@ -136,10 +136,7 @@ public without sharing class CL_ContractCopy {
                         Eigyosho3__c,
                         EigyoTanto__c,
                         EigyoTanto2__c,
-                        
-                        //追加
                         EstimateType_Judge__c,
-
                         SekkeiBusho__c,
                         SekkeiBusho2__c,
                         SekkeiTanto__c,

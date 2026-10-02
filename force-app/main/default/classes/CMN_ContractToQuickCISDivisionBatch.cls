@@ -21,6 +21,10 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
     // QuickCIS※料金メニューマップ Map<料金メニュー名, ※料金メニューID>
     private Map<String, String> qcisChargeMenuMap;
 
+    //OCP_SFDC_DEV-80　リトライ回数
+    private Integer retryCount = 0;
+ 
+    
     // テストクラス用：レスポンスパターン
     @TestVisible String resPattern;
 
@@ -31,8 +35,11 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
      * @see なし
      */
     public CMN_ContractToQuickCISDivisionBatch() {
-        // 処理なし
-    }
+        // 処理なし → 処理追加
+        // OCP_SFDC_DEV-80 リトライ回数
+        this.retryCount = 0;
+        }
+
 
 
     /**
@@ -180,6 +187,7 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
                 tgtMap.remove(ci.Id);
             }
         }
+       
 
         // ----------------------------------------
         // QuickCIS設定料金アイテム（需要家別）マスタの作成
@@ -231,10 +239,42 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
      * @see なし
      */
     public void finish(Database.BatchableContext bc) {
-        
+
+        // OCP_SFDC_DEV-80 改修のため元のコードをコメントアウト
         // エラーリストを登録
-        if(!this.errorList.isEmpty() ) {
-            Database.insert(this.errorList, false);
+        // if(!this.errorList.isEmpty() ) {
+        //     Database.insert(this.errorList, false);
+        // }
+        //}
+
+      //以下修正後のコード(247~274)
+
+    // 正常終了
+    if(this.errorList.isEmpty() && !Test.isRunningTest()) {
+
+        CMN_ContractToQuickCISChildBatch b =
+            new CMN_ContractToQuickCISChildBatch();
+
+        Database.executeBatch(b, 1);
+
+        return;
+    }
+
+    // エラーログ登録
+    Database.insert(this.errorList, false);
+
+    // カスタム表示ラベルで最大リトライ回数をCMN_MaxRetryCountとして定義
+    // UNABLE_TO_LOCK_ROWの場合のみ最大MaxRetryCount回リトライ
+    if(!this.errorList.isEmpty()
+        && this.retryCount < System.Label.CMN_MaxRetryCount
+        && !Test.isRunningTest()) {
+
+        CMN_ContractToQuickCISVScstrmWmBatch retryBatch =
+            new CMN_ContractToQuickCISVScstrmWmBatch(
+                this.retryCount + 1
+            );
+
+        Database.executeBatch(retryBatch, 1);
         }
     }    
 }

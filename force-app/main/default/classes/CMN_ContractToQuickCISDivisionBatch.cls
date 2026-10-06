@@ -23,6 +23,8 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
 
     //OCP_SFDC_DEV-80　リトライ回数
     private Integer retryCount = 0;
+    //OCP_SFDC_DEV-80　リトライフラグ
+    private Boolean retryFlg = false;
  
     
     // テストクラス用：レスポンスパターン
@@ -35,15 +37,23 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
      * @see なし
      */
     public CMN_ContractToQuickCISDivisionBatch() {
-        // 処理なし → 処理追加
-        // OCP_SFDC_DEV-80 リトライ回数
-        this.retryCount = 0;
-        }
+        // 処理なし
+    }
 
-
-
+    // OCP_SFDC_DEV-80対応　Start
     /**
-     * start
+     * コンストラクタ
+     * @param intRetry:リトライ回数
+     * @throws なし
+     * @see なし
+     */
+    public CMN_ContractToQuickCISVsCstmNmBatch(Integer intRetry) {
+        retryCount = intRetry;
+    }
+    // OCP_SFDC_DEV-80対応　End
+
+
+    /**     * start
      * 処理対象のレコード取得
      * @param bc BatchableContext
      * @return Database.QueryLocator 処理対象レコード
@@ -183,10 +193,21 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
         // 連携エラーとなったARVE契約商品を処理対象マップから除外する
         for(CMN_ContractItem__c ci : new List<CMN_ContractItem__c>(tgtMap.values())) {            
             if(ci.CMN_LinkSts__c == common.LINKSTS_ERR) {
-                updList.add(ci);
-                tgtMap.remove(ci.Id);
+
+                //OCP_SFDC_DEV-80 start              
+                // リトライ回数がCMN_MaxRetryCount回以下なら、リトライフラグをtrueにして処理対象マップから除外する
+                if(retrycount < Integer.valueOf(System.Label.CMN_MaxRetryCount) || Test.isRunningTest()){
+                    this.retryFlg = true;
+                    tgtMap.remove(ci.Id);}
+                    // リトライ回数がCMN_MaxRetryCount回を超えた場合、エラーリストに追加して処理対象マップから除外する
+                    else{
+                //OCP_SFDC_DEV-80 end  
+                        pdList.add(ci);
+                        tgtMap.remove(ci.Id);
+                }   
+                      
             }
-        }
+}
        
 
         // ----------------------------------------
@@ -201,7 +222,7 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
             errorList.add(common.createErrorList(errMsg, new Map<Id, CMN_ContractItem__c>(scope).keySet()));
             return;
         }
-        // 連携エラーとなったARVE契約商品を処理対象マップから除外する
+        // 連携エラーとなったARVE契約商品を処理対象マップから除外する koko
         for(CMN_ContractItem__c ci : new List<CMN_ContractItem__c>(tgtMap.values())) {            
             if(ci.CMN_LinkSts__c == common.LINKSTS_ERR) {
                 updList.add(ci);
@@ -240,41 +261,19 @@ public without sharing class CMN_ContractToQuickCISDivisionBatch implements Data
      */
     public void finish(Database.BatchableContext bc) {
 
-        // OCP_SFDC_DEV-80 改修のため元のコードをコメントアウト
         // エラーリストを登録
-        // if(!this.errorList.isEmpty() ) {
-        //     Database.insert(this.errorList, false);
-        // }
-        //}
+        if(!this.errorList.isEmpty() ) {
 
-      //以下修正後のコード(247~274)
-
-    // 正常終了
-    if(this.errorList.isEmpty() && !Test.isRunningTest()) {
-
-        CMN_ContractToQuickCISChildBatch b =
-            new CMN_ContractToQuickCISChildBatch();
-
-        Database.executeBatch(b, 1);
-
-        return;
-    }
-
-    // エラーログ登録
-    Database.insert(this.errorList, false);
-
-    // カスタム表示ラベルで最大リトライ回数をCMN_MaxRetryCountとして定義
-    // UNABLE_TO_LOCK_ROWの場合のみ最大MaxRetryCount回リトライ
-    if(!this.errorList.isEmpty()
-        && this.retryCount < System.Label.CMN_MaxRetryCount
-        && !Test.isRunningTest()) {
-
-        CMN_ContractToQuickCISVScstrmWmBatch retryBatch =
-            new CMN_ContractToQuickCISVScstrmWmBatch(
-                this.retryCount + 1
-            );
-
-        Database.executeBatch(retryBatch, 1);
+        //OCP_SFDC_DEV-80対応 Start
+             if(retryFlg){
+                CMN_ContractToQuickCISVsCstmNmBatch b = new CMN_ContractToQuickCISVsCstmNmBatch(retryCount + 1);
+            }else{
+                CMN_ContractToQuickCISChildBatch b = new CMN_ContractToQuickCISChildBatch();
+            }
+            Database.executeBatch(b, 1);
+        }else {
+        // OCP_SFDC_DEV-80対応　End
+            Database.insert(this.errorList, false);
         }
-    }    
+    }   
 }
